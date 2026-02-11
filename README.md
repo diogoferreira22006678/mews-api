@@ -24,7 +24,6 @@ The application follows a layered architecture to ensure separation of concerns 
 ## Layers
 
 - **Controllers** – Handle HTTP requests and responses
-- **Form Requests** – Input validation
 - **Services** – Business logic and integration with Mews API
 - **Mappers** – Transform raw Mews responses into API-friendly format
 - **Middleware** – Authentication and rate limiting
