@@ -2,135 +2,152 @@
 
 ## Overview
 
-This project is a **Laravel-based REST API** that integrates with the **Mews Connector API** to expose hotel data in a clean and consumer-friendly format.
+This project is a Laravel-based REST API that integrates with the **Mews Connector API** to expose hotel data in a clean and consumer-friendly format.
 
 The API provides:
 
-- Token-based authentication
+- Token-based authentication (Laravel Sanctum)
 - Hotel reservations retrieval
 - Room availability and pricing (computed)
 - Customer search
 - Input validation, error handling, and rate limiting
+- Conversational availability via Dialogflow chatbot
 
-The focus of this challenge is **backend architecture, API design, and real-world system integration**.
-
----
-
-## Architecture Overview
-
-The application follows a layered architecture:
-- **Controllers**: Handle HTTP requests, input validation, and responses.
-- **Services**: Encapsulate business logic and interactions with the Mews API.
-- **Routes**: Define API endpoints and middleware.
-- **Mappers**: Transform Mews API responses into our API's response format.
-- **Middleware**: Handle authentication, rate limiting, and other cross-cutting concerns.
-
-### Layers
-
-- **Controllers**: HTTP orchestration only  
-- **Requests**: Input validation  
-- **Services**: Business logic and integration with Mews  
-- **Mappers**: Transform raw Mews payloads into API responses  
-
-This structure ensures clear separation of concerns and testability.
+The focus of this challenge is backend architecture, API design, and real-world system integration.
 
 ---
 
-## Authentication
+# Architecture Overview
+
+The application follows a layered architecture to ensure separation of concerns and maintainability.
+
+## Layers
+
+- **Controllers** – Handle HTTP requests and responses
+- **Form Requests** – Input validation
+- **Services** – Business logic and integration with Mews API
+- **Mappers** – Transform raw Mews responses into API-friendly format
+- **Middleware** – Authentication and rate limiting
+- **Routes** – Endpoint definitions
+
+This structure improves testability and scalability.
+
+---
+
+# Authentication
 
 All protected endpoints use **Laravel Sanctum**.
 
-### Flow
+## Flow
 
 1. User registers or logs in  
 2. API returns a Bearer token  
-3. All protected endpoints require the header:
-Authorization: Bearer <token>
+3. Protected endpoints require:
+
+```
+Authorization: Bearer YOUR_TOKEN
+```
 
 Unauthorized requests return **HTTP 401**.
 
 ---
 
-## API Endpoints
+# API Endpoints
 
-### Authentication
+## Authentication
 
+```
 POST /api/register
 POST /api/login
-GET /api/user
+GET  /api/user
 POST /api/logout
-
-### Reservations
-GET /api/mews/reservations
-
-#### Query Parameters
-
-- `property_id` (required)
-- `check_in` (required, YYYY-MM-DD)
-- `check_out` (optional, YYYY-MM-DD)
-- `status` (optional)
-
-#### Behavior
-
-- Reservations are fetched from the Mews Connector API
-- Results are filtered by date intersection
-- Missing optional fields are returned as `null`
+```
 
 ---
 
-### Customers Search
+## Reservations
+
+```
+GET /api/mews/reservations
+```
+
+### Query Parameters
+
+| Parameter   | Required | Format       |
+|------------|----------|--------------|
+| property_id | Yes      | string       |
+| check_in    | Yes      | YYYY-MM-DD   |
+| check_out   | No       | YYYY-MM-DD   |
+| status      | No       | string       |
+
+### Behavior
+
+- Reservations are fetched from the Mews Connector API  
+- Results are filtered by date intersection  
+- Missing optional fields return `null`
+
+---
+
+## Customers Search
+
+```
 GET /api/mews/customers/search
+```
 
-#### Query Parameters
+### Query Parameters
 
-- `name` (optional)
-- `resource_id` (optional)
+| Parameter    | Required |
+|-------------|----------|
+| name        | No       |
+| resource_id | No       |
 
 ---
 
 ## Availability (Computed)
-GET /api/mews/availability
 
+```
+GET /api/mews/availability
+```
 
 ### Query Parameters
 
-- `property_id` (required)
-- `check_in` (required, YYYY-MM-DD)
-- `check_out` (required, YYYY-MM-DD)
-- `adults` (required, integer ≥ 1)
+| Parameter   | Required | Format       |
+|------------|----------|--------------|
+| property_id | Yes      | string       |
+| check_in    | Yes      | YYYY-MM-DD   |
+| check_out   | Yes      | YYYY-MM-DD   |
+| adults      | Yes      | integer ≥ 1  |
 
 ---
 
-### Availability Logic
+# Availability Logic
 
-The Mews Connector API does **not** expose a direct availability endpoint.
+The Mews Connector API does not provide a direct availability endpoint.
 
-Availability is computed by analyzing existing reservations and predefined room inventory.
+Availability is computed by:
 
-#### Steps
+1. Fetching reservations intersecting the date range  
+2. Ignoring canceled reservations  
+3. Counting occupied rooms per room type  
+4. Subtracting occupied rooms from total inventory  
+5. Filtering rooms by capacity  
+6. Calculating total stay price  
 
-1. Fetch reservations that intersect the requested date range  
-2. Ignore reservations that do not occupy rooms (e.g. canceled)  
-3. Count occupied rooms per room type  
-4. Subtract occupied rooms from total inventory  
-5. Filter rooms by capacity (number of adults)  
-6. Calculate total price based on number of nights  
-
-A room type is considered available only if **at least one unit is free for all nights** of the stay.
+A room type is available only if at least one unit is free for the entire stay.
 
 ---
 
-### Pricing Strategy
+# Pricing Strategy
 
-Pricing is calculated using:
+```
 price_per_night × number_of_nights
+```
 
-
-Rates are defined in the inventory configuration and multiplied by the stay length.
+Rates are defined in the inventory configuration.
 
 ---
 
-### Example Availability Response
+# Example Availability Response
 
 ```json
 {
@@ -148,138 +165,63 @@ Rates are defined in the inventory configuration and multiplied by the stay leng
     }
   ]
 }
+```
+
 If no rooms are available:
+
+```json
 {
   "rooms": []
 }
 ```
 
-### Assumptions and Limitations
+---
 
-Room inventory is predefined for the purpose of this challenge
+# Conversational Availability (Chatbot)
 
-Reservations without explicit room type information are assumed to occupy a standard room
+## Overview
 
-Only reservations with states Started, Processed, or Confirmed are considered
+The API includes a conversational interface powered by **Google Dialogflow ES**.
 
-Advanced Mews features (overbooking, out-of-order rooms, channel restrictions) are out of scope
+Users can check availability using natural language input.
 
-All assumptions are isolated within the availability service
+No availability logic is duplicated — the chatbot layer reuses the existing availability service.
 
-Validation and Error Handling
-HTTP Response Codes
-Scenario	Status
-Validation error	422
-Unauthorized	401
-Mews API error	502
-Rate limit exceeded	429
+---
 
-## How to Run Locally
-### Setup
-git clone <repository>
-cd project
-composer install
-cp .env.example .env
-php artisan key:generate
-php artisan migrate
-php artisan serve
-Environment Variables
+## Chatbot Endpoint
 
-## Configure Mews credentials in .env:
-
-MEWS_URL=
-MEWS_CLIENT_TOKEN=
-MEWS_ACCESS_TOKEN=
-MEWS_CLIENT_NAME=
-
-DIALOGFLOW_PROJECT_ID=
-DIALOGFLOW_LOCATION=
-DIALOGFLOW_AGENT_LANGUAGE=
-DIALOGFLOW_CREDENTIALS=
-
-### Conversational Availability (Chatbot Integration)
-Overview
-
-The API includes a natural-language chatbot interface powered by Google Dialogflow, allowing users to check hotel availability using conversational input instead of structured query parameters.
-
-The chatbot is implemented as a thin conversational layer on top of the existing availability engine.
-
-No availability logic is duplicated.
-
-Example user inputs:
-
-“Do you have rooms from June 1 to June 3 for 2 adults?”
-
-“Any rooms available next weekend for 3 people?”
-
-“Check availability tomorrow for one night”
-
-### Chatbot Architecture
-Frontend / Dialogflow
-        ↓
+```
 POST /api/chatbot/message
-        ↓
-ChatbotController
-        ↓
-DialogflowService (intent detection)
-        ↓
-ChatbotAvailabilityService (parameter normalization)
-        ↓
-MewsAvailabilityService
-        ↓
-Conversational JSON response
-### Chatbot Endpoint
-POST /api/chatbot/message
-Request Body
+```
+
+### Request Body
+
+```json
 {
-  "text": "Do you have rooms from June 1 to June 3 for 2 adults",
+  "text": "Do you have rooms from June 1 to June 3 for 2 adults?",
   "session_id": "optional-session-id"
 }
+```
 
-text: User natural-language input
+- `text` – Natural language input  
+- `session_id` – Optional conversation context  
 
-session_id: Optional, used to maintain conversational context
+This endpoint is public and rate-limited.
 
-This endpoint is public (not protected by Sanctum) and rate-limited.
+---
 
-### Supported Intent
+## Supported Intent
 
-CheckAvailability
+- `CheckAvailability`
 
 Unsupported intents are handled gracefully.
 
-### Dialogflow Parameter Mapping
-Parameter	Entity
-date_period	@sys.date-period
-adults	@sys.number
+---
 
-Example payload received from Dialogflow:
+## Example Chatbot Response
 
-{
-  "date_period": {
-    "startDate": "2025-06-01",
-    "endDate": "2025-06-03"
-  },
-  "adults": 2
-}
-Parameter Normalization
-
-### Conversational parameters are normalized server-side into the existing availability format:
-
-[
-  "property_id" => "hotel_123",
-  "check_in"    => "2025-06-01",
-  "check_out"   => "2025-06-03",
-  "adults"      => 2
-]
-
-property_id is resolved via configuration
-
-Dates are normalized using Carbon
-
-Missing required parameters trigger validation errors
-
-### Chatbot Response Example
+```json
 {
   "error": false,
   "intent": "CheckAvailability",
@@ -295,14 +237,117 @@ Missing required parameters trigger validation errors
     }
   }
 }
-### Chatbot Assumptions and Limitations
+```
 
-Only availability queries are supported
+---
 
-Single-property setup
+# Validation and Error Handling
 
-Multi-turn conversations are out of scope
+| Scenario              | HTTP Status |
+|-----------------------|------------|
+| Validation error      | 422        |
+| Unauthorized          | 401        |
+| Mews API error        | 502        |
+| Rate limit exceeded   | 429        |
 
-Dialogflow ES is used (not CX)
+---
 
-Chatbot endpoints do not require authentication
+# How to Run Locally
+
+## 1. Clone the Repository
+
+```bash
+git clone https://github.com/diogoferreira22006678/mews-api.git
+cd mews-api
+```
+
+## 2. Install Dependencies
+
+```bash
+composer install
+```
+
+## 3. Setup Environment
+
+```bash
+cp .env.example .env
+php artisan key:generate
+```
+
+## 4. Configure Database
+
+Edit `.env`:
+
+```
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=mews_api
+DB_USERNAME=root
+DB_PASSWORD=your_password
+```
+
+Run migrations:
+
+```bash
+php artisan migrate
+```
+
+## 5. Configure Mews Credentials
+
+```
+MEWS_URL=
+MEWS_CLIENT_TOKEN=
+MEWS_ACCESS_TOKEN=
+MEWS_CLIENT_NAME=
+```
+
+## 6. Configure Dialogflow
+
+```
+DIALOGFLOW_PROJECT_ID=
+DIALOGFLOW_LOCATION=
+DIALOGFLOW_AGENT_LANGUAGE=en
+DIALOGFLOW_CREDENTIALS=/absolute/path/to/service-account.json
+```
+
+⚠️ Never commit service account JSON files.
+
+## 7. Start the Server
+
+```bash
+php artisan serve
+```
+
+API runs at:
+
+```
+http://127.0.0.1:8000
+```
+
+---
+
+# Assumptions and Limitations
+
+- Single-property setup  
+- Room inventory is predefined  
+- Only reservations with states Started, Processed, or Confirmed are considered  
+- Advanced Mews features (overbooking, channel restrictions, out-of-order rooms) are out of scope  
+- Multi-turn chatbot conversations are not implemented  
+
+---
+
+# Production Notes
+
+- Use Nginx or Apache  
+- Use HTTPS  
+- Store secrets securely  
+- Do not commit `.env` or service account credentials  
+- Configure proper logging and monitoring  
+
+---
+
+# Author
+
+Diogo Ferreira  
+Backend Developer
